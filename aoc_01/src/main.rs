@@ -1,6 +1,3 @@
-use std::fs::File;
-use std::io::prelude::*;
-
 fn main() {
     let input = include_str!("input");
     let numbers = std::collections::HashMap::from([
