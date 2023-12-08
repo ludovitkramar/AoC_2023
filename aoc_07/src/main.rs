@@ -2,26 +2,28 @@ use std::{collections::HashMap, str::FromStr};
 
 fn main() {
     let input = include_str!("input");
-    let one = part_one(input);
+    let answer = part_two(input);
 
-    println!("Result: {}", one);
+    println!("Result: {}", answer);
 }
 
 #[test]
 fn test() {
     let example = include_str!("example");
-    let example_one = part_one(example);
-    assert_eq!(example_one, 6440);
+    let example_two = part_two(example);
+    assert_eq!(example_two, 5905);
 }
 
-fn part_one(input: &str) -> i64 {
+fn part_two(input: &str) -> i64 {
     let mut hands = read(input);
     hands.sort();
-    
+
     let mut mult: i64 = hands.len().try_into().unwrap();
 
     let mut sum: i64 = 0;
     for hand in hands {
+        println!("{}, {}, {:?}. Rank: {}", hand.cards, hand.bid, hand.hand_type, mult);
+
         sum += hand.bid * mult;
         mult -= 1;
     }
@@ -54,6 +56,42 @@ struct Hand {
     pub hand_type: HandType,
 }
 
+fn find_type(cards: &String) -> HandType {
+    let mut distinct = HashMap::new();
+    for char in cards.chars() {
+        match distinct.get(&char) {
+            Some(value) => distinct.insert(char, value + 1),
+            None => distinct.insert(char, 1),
+        };
+    }
+
+    let hand_type = match distinct.len() {
+        1 => HandType::FiveOfAKind,
+        2 => {
+            let mut t = HandType::FullHouse;
+            for value in distinct.values() {
+                if *value == 4 {
+                    t = HandType::FourOfAKind;
+                }
+            }
+            t
+        }
+        3 => {
+            let mut t = HandType::TwoPair;
+            for value in distinct.values() {
+                if *value == 3 {
+                    t = HandType::ThreeOfAKind;
+                }
+            }
+            t
+        }
+        4 => HandType::OnePair,
+        _ => HandType::HighCard,
+    };
+
+    hand_type
+}
+
 #[derive(Debug)]
 struct ParseHandError;
 
@@ -73,37 +111,30 @@ impl FromStr for Hand {
             .ok_or(ParseHandError)?
             .map_err(|_| ParseHandError)?;
 
-        let mut distinct = HashMap::new();
-        for char in cards.chars() {
-            match distinct.get(&char) {
-                Some(value) => distinct.insert(char, value + 1),
-                None => distinct.insert(char, 1),
-            };
-        }
+        // J cards can pretend to be whatever card is best for the purpose of determining hand type; for example, QJJQ2 is now considered four of a kind.
+        let hand_type = if cards.contains('J') {
+            let mut best_type = find_type(&cards);
+            println!("[Find best joker] {}", cards);
 
-        let hand_type = match distinct.len() {
-            1 => HandType::FiveOfAKind,
-            2 => {
-                let mut t = HandType::FullHouse;
-                for value in distinct.values() {
-                    if *value == 4 {
-                        t = HandType::FourOfAKind;
-                    }
+            for char in cards.chars() {
+                if char == 'J' {
+                    continue;
                 }
-                t
-            }
-            3 => {
-                let mut t = HandType::TwoPair;
-                for value in distinct.values() {
-                    if *value == 3 {
-                        t = HandType::ThreeOfAKind;
-                    }
+
+                let mutated = cards.replace('J', &char.to_string());
+                let t = find_type(&mutated);
+                // best_type = std::cmp::min(best_type, t);
+
+                if t < best_type {
+                    println!("New best type: {}, {:?}.", mutated, t);
+                    best_type = t;
                 }
-                t
             }
-            4 => HandType::OnePair,
-            _ => HandType::HighCard,
-        };
+
+            best_type
+        } else {
+            find_type(&cards)
+        };        
 
         Ok(Hand {
             bid,
@@ -126,8 +157,10 @@ impl Ord for Hand {
         }
 
         let quick = self.hand_type.cmp(&other.hand_type);
-        // A, K, Q, J, T, 9, 8, 7, 6, 5, 4, 3, or 2. The relative strength of each card follows this order, where A is the highest and 2 is the lowest.
-        let cards_order = vec!['A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2'];
+        // J cards are now the weakest individual cards, weaker even than 2. The other cards stay in the same order: A, K, Q, T, 9, 8, 7, 6, 5, 4, 3, 2, J.
+        let cards_order = vec![
+            'A', 'K', 'Q', 'T', '9', '8', '7', '6', '5', '4', '3', '2', 'J',
+        ];
 
         if quick.is_eq() {
             for i in 0..5 {
