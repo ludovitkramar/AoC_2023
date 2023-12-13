@@ -61,6 +61,7 @@ impl Position {
         ret
     }
 
+    // FIXME: consider current pipe type.
     fn is_connected(&self, dir: &Direction, symbol: &char) -> bool {
         let symbol = *symbol;
         match dir {
