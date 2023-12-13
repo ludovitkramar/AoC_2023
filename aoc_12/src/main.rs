@@ -5,7 +5,6 @@ fn main() {
     let data = read(input);
 
     let sum = part_one(&data);
-
     println!("Ans: {}", sum);
 }
 
@@ -27,86 +26,88 @@ fn test() {
 fn part_one(data: &Vec<Record>) -> u64 {
     let mut sum = 0;
     for entry in data {
-        //println!("Data: {:?}\nCheck: {:?}", entry.data, entry.check);
-
         let unknown_count = entry
             .data
             .iter()
             .filter(|x| **x == Condition::Unkown)
             .count();
 
-        let possibilities_count = 2u64.pow(unknown_count as u32);
-
-        // println!(
-        //     "Unknown count: {}. Checkes required: {}",
-        //     unknown_count, possibilities_count
-        // );
-
         let all_possibilities = get_all_possibilities(&entry.data);
-        assert_eq!(all_possibilities.len() as u64, possibilities_count);
+
+        let possibilities_count = 2u64.pow(unknown_count as u32);
+        let mut debug_counter = 0;
 
         let mut counter = 0;
         for possibiliy in all_possibilities {
             assert_eq!(possibiliy.len(), entry.data.len());
             let ok = check(&possibiliy, &entry.check);
-
             if ok {
                 counter += 1;
             }
-            // println!("is ok?: {}", ok);
+
+            debug_counter += 1;
         }
+        assert_eq!(debug_counter, possibilities_count);
 
         println!("There are {} possible answers.", counter);
-
         sum += counter;
     }
     sum
 }
 
-fn get_all_possibilities(data: &Vec<Condition>) -> Vec<Vec<Condition>> {
+fn expand_possibilities(
+    previous: Option<Box<dyn Iterator<Item = Vec<Condition>>>>,
+) -> Box<dyn Iterator<Item = Vec<Condition>>> {
+    match previous {
+        Some(previous) => {
+            let temp = previous.flat_map(|x| {
+                [
+                    [(x).clone(), vec![Condition::Operational]].concat(),
+                    [(x).clone(), vec![Condition::Damaged]].concat(),
+                ]
+            });
+
+            Box::new(temp.into_iter().chain(std::iter::empty()))
+        }
+        None => Box::new(
+            vec![vec![Condition::Operational], vec![Condition::Damaged]]
+                .into_iter()
+                .chain(std::iter::empty()),
+        ),
+    }
+}
+
+fn get_all_possibilities(data: &Vec<Condition>) -> Box<dyn Iterator<Item = Vec<Condition>> + '_> {
     let unknown_count = data
         .iter()
         .filter(|condition| **condition == Condition::Unkown)
         .count();
 
     if unknown_count == 0 {
-        return Vec::new();
+        return Box::new(std::iter::empty());
     }
 
-    let mut start = vec![vec![Condition::Operational], vec![Condition::Damaged]];
+    let mut start = expand_possibilities(None);
 
     for _ in 1..unknown_count {
-        start = start
-            .iter()
-            .flat_map(|x| {
-                [
-                    [(*x).clone(), vec![Condition::Operational]].concat(),
-                    [(*x).clone(), vec![Condition::Damaged]].concat(),
-                ]
-            })
-            .collect::<Vec<_>>();
+        start = expand_possibilities(Some(start));
     }
 
-    let result = start
-        .iter()
-        .map(|entry| {
-            assert_eq!(unknown_count, entry.len());
+    let ret = start.map(|entry| {
+        let mut index = 0;
+        data.iter()
+            .map(|value| match value {
+                Condition::Unkown => {
+                    let v = (*entry.get(index).unwrap()).clone();
+                    index += 1;
+                    v
+                }
+                _ => (*value).clone(),
+            })
+            .collect::<Vec<_>>()
+    });
 
-            let mut index = 0;
-            data.iter()
-                .map(|value| match value {
-                    Condition::Unkown => {
-                        let v = (*entry.get(index).unwrap()).clone();
-                        index += 1;
-                        v
-                    }
-                    _ => (*value).clone(),
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
-
-    result
+    Box::new(ret)
 }
 
 fn check(data: &Vec<Condition>, checksum: &Vec<u32>) -> bool {
