@@ -1,99 +1,107 @@
-use std::collections::HashSet;
+use std::collections::{BinaryHeap, HashSet};
 
 fn main() {
     let input = include_str!("input");
     let graph = build_graph(input);
 
-    // for node in graph.iter() {
-    //     println!("{:?}", node);
-
-    //     for child_index in node.children.iter() {
-    //         let child = graph.get(*child_index).unwrap();
-    //         println!("Child[{}]: {:?}", child_index, child)
-    //     }
-    // }
-
     let cost = part_one(&graph);
-
-    // for node in path.iter() {
-    //     println!("{:?}", node);
-    // }
-
     println!("Shortest path cost: {}", cost);
 }
 
-fn part_one(graph: & Vec<Node>) -> u32 {
+fn part_one(graph: &Vec<Node>) -> u32 {
     let start = graph.first().unwrap();
     let goal = graph.last().unwrap();
 
-    find_path(&graph, start, goal)
+    find_path(graph, start.clone(), goal.clone())
 }
 
 #[test]
-fn test() {
+fn test_example() {
     let example = include_str!("example");
-    
     let example_graph = build_graph(example);
+
     let cost = part_one(&example_graph);
-    
     assert_eq!(cost, 102);
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-struct SearchNode<'a> {
+#[test]
+fn test_real() {
+    let input = include_str!("input");
+    let input_graph = build_graph(input);
+
+    let cost = part_one(&input_graph);
+    assert_eq!(cost, 1263);
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+struct SearchNode {
     direction: Option<Direction>,
     same_dir_counter: u32,
     actual_cost: u32,
     heuristic_cost: u32,
-    node: &'a Node,
+    node: usize,
 }
 
-fn find_path<'a>(graph: &'a Vec<Node>, start: &'a Node, goal: &'a Node) -> u32 {
+impl PartialOrd for SearchNode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let cost_a = self.actual_cost + self.heuristic_cost;
+        let cost_b = other.actual_cost + other.heuristic_cost;
+
+        Some(cost_b.cmp(&cost_a))
+    }
+}
+
+impl Ord for SearchNode {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+fn find_path(graph: &Vec<Node>, start: Node, goal: Node) -> u32 {
     // Initialize a tree with the root node being the start node S.
     let start_node = SearchNode {
         direction: None,
         actual_cost: 0,
         same_dir_counter: 0,
         heuristic_cost: start.pos.distance(&goal.pos),
-        node: start,
+        node: graph.iter().position(|p| p == &start).unwrap(),
     };
+    let goal_id = graph.iter().position(|p| p == &goal).unwrap();
 
-    let mut open = vec![start_node];
     let mut closed: HashSet<SearchNode> = HashSet::new();
+    let mut open = BinaryHeap::new();
+    let mut open_hash = HashSet::new();
+    open.push(start_node);
 
     let cost;
     loop {
         // Remove the top node from the open list for exploration.
-        let current = open.remove(0);
-
-        // println!(
-        //     "Exploring: {:?}. Cost: {}, Dir: {:?}",
-        //     current.node.pos, current.actual_cost, current.direction
-        // );
+        let current = open.pop().unwrap();
 
         // Add all nodes that have an incoming edge from the current node as child nodes in the tree.
-        for child_id in current.node.children.iter() {
+        let current_node = graph.get(current.node).unwrap();
+        for child_id in current_node.children.iter() {
             let child = graph.get(*child_id).unwrap();
 
-            let dir = child.pos.relative_direction(&current.node.pos);
+            let dir = child.pos.relative_direction(&current_node.pos);
 
-            if (current.direction.clone()).is_some() {
-                let current_direction = current.direction.clone().unwrap();
-                let allow = match dir.clone().unwrap() {
+            if (&current.direction).is_some() {
+                let current_direction = current.direction.unwrap();
+                let allow = match dir.unwrap() {
                     Direction::Up => current_direction != Direction::Down,
                     Direction::Down => current_direction != Direction::Up,
                     Direction::Left => current_direction != Direction::Right,
                     Direction::Right => current_direction != Direction::Left,
                 };
                 if !allow {
-                    // // println!("Can't go to where came from.");
+                    // Can't go to where it came from.
                     continue;
                 }
             }
 
             let dir_counter = match current.direction {
                 Some(current_direction) => {
-                    if current_direction == dir.clone().unwrap() {
+                    if current_direction == dir.unwrap() {
                         current.same_dir_counter + 1
                     } else {
                         0
@@ -103,7 +111,7 @@ fn find_path<'a>(graph: &'a Vec<Node>, start: &'a Node, goal: &'a Node) -> u32 {
             };
 
             if dir_counter >= 3 {
-                // // println!("Can't go in same direction for more than three blocks.");
+                // Can't go in same direction for more than three blocks.
                 continue;
             }
 
@@ -112,36 +120,23 @@ fn find_path<'a>(graph: &'a Vec<Node>, start: &'a Node, goal: &'a Node) -> u32 {
                 same_dir_counter: dir_counter,
                 actual_cost: child.heat_loss as u32 + current.actual_cost,
                 heuristic_cost: child.pos.distance(&goal.pos),
-                node: child,
+                node: *child_id,
             };
 
             if closed.contains(&child_node) {
                 continue;
             }
 
-            if open.contains(&child_node) {
-                // println!("Already contains node.");
+            if open_hash.contains(&child_node) {
+                // Already contains node.
             } else {
-                // println!("Adding: {:?}", child_node.node.pos);
+                open_hash.insert(child_node.clone());
                 open.push(child_node);
             }
         }
 
-        //open.dedup();
-        open.sort_by(|a, b| {
-            let cost_a = a.actual_cost + a.heuristic_cost;
-            let cost_b = b.actual_cost + b.heuristic_cost;
-
-            cost_a.cmp(&cost_b)
-        });
-
-        // println!("Open list: {:?}", open.len());
-
-        // println!("Current: {:?}", current.actual_cost);
-
         // Add the current node to the closed list.
-
-        if current.node == goal {
+        if current.node == goal_id {
             cost = current.actual_cost;
             break;
         }
